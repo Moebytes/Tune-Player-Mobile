@@ -10,9 +10,9 @@ The mobile app for Tune Player! Because I need to have it on phone as well.
 - Speed adjustment (may preserve the pitch) 
 - Pitch shifting (and LFO pitch effect)
 - A-B Looping and copy/paste loop points
+- Audio filters and effects (lowpass, highpass, reverb, delay, bitcrush)
+- Customize the controls of the MIDI synthesizer
 - Render and download audio/midi with effects
-
-Filters and effects might be added later (I don't know where to fit them tbh)
 
 ### Design
 

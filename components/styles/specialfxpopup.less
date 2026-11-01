@@ -1,0 +1,210 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * Tune Player - A cute music player ❤                       *
+ * Copyright © 2026 Moebytes <moebytes.com>                  *
+ * Licensed under CC BY-NC 4.0. See license.txt for details. *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+ 
+@import "../../index.less";
+
+.special-fx-popup {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    border-radius: 16px;
+    background: var(--background);
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: none;
+    outline: none;
+    margin: auto;
+    width: 90%;
+
+    &::backdrop { 
+        background: rgba(0, 0, 0, 0.35); 
+    }
+}
+
+.special-fx-top {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    padding: 4px 12px;
+}
+
+.special-fx-close {
+    font-family: "GenEi M Gothic v2", sans-serif;
+    color: var(--textColor);
+    font-size: 28px;
+    width: 44px;
+}
+
+.special-fx-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 0px 12px;
+    gap: 6px;
+}
+
+.special-fx-tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--navColor);
+    border: 1px solid var(--iconColor);
+    color: var(--textColor);
+    padding: 6px 12px;
+    flex: 1;
+
+    &[aria-selected="true"] {
+        background: var(--background);
+        color: var(--iconColor);
+    }
+}
+
+.special-fx-icon {
+    width: 32px; 
+    height: 32px;
+}
+
+.special-fx-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 8px 20px;
+    width: 100%;
+    gap: 10px;
+}
+
+.special-fx-control {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.special-fx-label {
+    font-family: "GenEi M Gothic v2", sans-serif;
+    color: var(--textColor);
+    font-size: 15px;
+    text-wrap: nowrap;
+}
+
+.special-fx-slider {
+    display: flex;
+    justify-content: center;
+    height: 20px;
+    width: 100%;
+    border-radius: 0.2;
+    align-items: center;
+    margin-top: 5px;
+}
+
+.special-fx-slider-track-0 {
+    height: 7px;
+    background-color: var(--iconColor);
+    border-radius: 0.2;
+}
+
+.special-fx-slider-track-1 {
+    height: 7px;
+    background-color: var(--navColor);
+    border-radius: 0.2;
+}
+
+.special-fx-slider-handle {
+    background-color: var(--iconColor);
+    border-radius: 50%;
+    margin-left: -2px;
+    border: none;
+    height: 1.3rem;
+    width: 1.3rem;
+    &:active {
+        box-shadow: none;
+    }
+    &:focus {
+        outline: none;
+    }
+}
+
+.special-fx-wave-row {
+    display: flex; 
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    gap: 12px;
+}
+
+.special-fx-wave {
+    color: var(--iconColor);
+    background: transparent;
+    border: 2px solid transparent;
+    border-radius: 0;
+    padding: 3px;
+
+    &[aria-pressed="true"] {
+        border-color: var(--iconColor);
+    }
+}
+
+.special-fx-wave-icon {
+    width: auto;
+    height: 65px;
+}
+
+.special-fx-wavetype-row {
+    display: flex; 
+    align-items: center;
+    justify-content: space-evenly;
+    width: 100%;
+    gap: 6px;
+}
+
+.special-fx-wavetype {
+    padding: 2px;
+    border: 2px solid transparent;
+    border-radius: 5px;
+    font-family: "GenEi M Gothic v2", sans-serif;
+    color: black;
+    font-size: 15px;
+    white-space: nowrap;
+
+    &[aria-pressed="true"] {
+        border-color: var(--textColor);
+        color: var(--textColor);
+    }
+}
+
+.special-fx-poly-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.special-fx-poly {
+    width: auto;
+    min-height: 32px;
+    padding: 2px 12px;
+    border: none;
+    border-radius: 7px;
+    font-family: "GenEi M Gothic v2", sans-serif;
+    color: black;
+    font-size: 15px;
+}
+
+.special-fx-reset {
+    width: 100%;
+    padding: 12px;
+    border: none;
+    border-radius: 16px;
+    background: var(--iconColor);
+    font-family: "GenEi M Gothic v2", sans-serif;
+    color: var(--textColor);
+    font-size: 22px;
+}

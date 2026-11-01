@@ -21,6 +21,8 @@ import audio from "../structures/audio"
 import engine, {audioReady} from "../structures/audioEngine"
 import type {AudioCommand} from "../structures/audio"
 import type {SongItem} from "../structures/functions"
+import SpecialFXPopup from "./SpecialFXPopup"
+import SpecialFXIcon from "../assets/svg/special-fx.svg"
 import PlayIcon from "../assets/svg/play.svg"
 import PauseIcon from "../assets/svg/pause.svg"
 import ReverseIcon from "../assets/svg/reverse.svg"
@@ -77,6 +79,8 @@ const AudioPlayer: React.FunctionComponent = (props) => {
     const [effects, setEffects] = useState([] as {type: string, node: Tone.ToneAudioNode}[])
     const [showSpeedPopup, setShowSpeedPopup] = useState(false)
     const [showPitchPopup, setShowPitchPopup] = useState(false)
+    const [showFXPopup, setShowFXPopup] = useState(false)
+    const [fxTab, setFXTab] = useState("synth")
     const [synthLoaded, setSynthLoaded] = useState(false)
     const loadRequest = useRef(0)
     const playbackURL = useRef("")
@@ -411,24 +415,21 @@ const AudioPlayer: React.FunctionComponent = (props) => {
     }, [synthLoaded, wave, basicWave, waveType, attack, decay, sustain, release, poly, portamento])
 
     const removeEffect = (type: string) => {
-        const index = effects.findIndex((e) => e?.type === type)
-        if (index !== -1) {
-            effects[index] = null as any
-            setEffects(effects.filter(Boolean))
-        }
+        setEffects(previous => {
+            if (!previous.some(effect => effect.type === type)) return previous
+            return previous.filter(effect => effect.type !== type)
+        })
     }
 
     const pushEffect = (type: string, node: Tone.ToneAudioNode) => {
-        const obj = {type, node}
-        const index = effects.findIndex((e) => e?.type === type)
-        if (index !== -1) {
-            effects[index] = obj
-        } else {
-            effects.push(obj)
-        }
-        setEffects(effects)
+        setEffects(previous => {
+            if (previous.some(effect => effect.type === type)) {
+                return previous.map(effect => effect.type === type ? {type, node} : effect)
+            }
+            return [...previous, {type, node}]
+        })
     }
-    
+
     const applyEffects = useEffectEvent(() => {
         if (!engine.player || !engine.audioNode || !engine.effectNode || !engine.gainNode ||
         !engine.soundtouchNode || !engine.staticSoundtouchNode ||
@@ -504,6 +505,10 @@ const AudioPlayer: React.FunctionComponent = (props) => {
             }
         }
     })
+
+    useEffect(() => {
+        applyEffects()
+    }, [effects])
 
     const disposeSynths = useEffectEvent((synthArray?: any[]) => {
         let array = synthArray ? synthArray : engine.synths
@@ -1623,6 +1628,11 @@ const AudioPlayer: React.FunctionComponent = (props) => {
     return (
         <main className="audio-player">
             <section className="player">
+                {showFXPopup && <SpecialFXPopup tab={fxTab} onTabChange={setFXTab} onClose={() => setShowFXPopup(false)}/>}
+                <ScalableHaptic onPress={() => setShowFXPopup(true)}
+                    containerStyle={{position: "absolute", top: 14, right: 16, width: "auto"}}>
+                    <SpecialFXIcon className="player-fx-button"/>
+                </ScalableHaptic>
                 <div className="player-container">
                     {/* <img className="player-img" src={songCover}/> */}
                     <div className="player-row">
