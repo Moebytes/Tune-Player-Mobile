@@ -74,6 +74,31 @@ export default class Audio {
         return this.resumePlaybackContext(() => raw.resume(), () => context.state)
     }
 
+    public static recoverPlaybackClock = async (context: {rawContext: unknown, state: string}) => {
+        if (Capacitor.getPlatform() !== "ios") return
+        const raw = context.rawContext as {currentTime: number, suspend: () => Promise<void>}
+        const advances = async () => {
+            const time = raw.currentTime
+            await new Promise(resolve => setTimeout(resolve, 150))
+            return context.state === "running" && raw.currentTime > time
+        }
+        if (await advances()) return
+        if (context.state !== "running") throw new Error(`Audio context is ${context.state}`)
+        let timeout: ReturnType<typeof setTimeout> | undefined
+        try {
+            await Promise.race([
+                raw.suspend(),
+                new Promise<never>((_, reject) => {
+                    timeout = setTimeout(() => reject(new Error("Audio suspension timed out")), 4000)
+                })
+            ])
+        } finally {
+            clearTimeout(timeout)
+        }
+        await this.resumeContext(context)
+        if (!await advances()) throw new Error("Audio rendering clock did not resume")
+    }
+
     public static playbackPosition = (seconds: number, duration: number, reverse: boolean) => {
         return Math.max(0, Math.min(duration, reverse ? duration - seconds : seconds))
     }
@@ -85,8 +110,10 @@ export default class Audio {
 
     public static updateNowPlaying = (info: NowPlayingInfo) => this.queue(async () => {
         if (Capacitor.getPlatform() !== "ios") return
-        await native.updateNowPlaying(info)
-        if (!mediaSessionAvailable()) return
+        if (!mediaSessionAvailable()) {
+            await native.updateNowPlaying(info)
+            return
+        }
 
         const session = navigator.mediaSession
         const artwork = info.artwork ?? (publishedInfo?.trackID === info.trackID ? publishedInfo.artwork : "")
@@ -98,12 +125,12 @@ export default class Audio {
         }
 
         publishedInfo = {...info, artwork}
-        session.playbackState = info.rate === 0 ? "paused" : "playing"
-        
+
         if (Number.isFinite(info.duration) && info.duration > 0 && Number.isFinite(info.elapsed)) {
             session.setPositionState?.({duration: info.duration,
                 position: Math.max(0, Math.min(info.duration, info.elapsed)), playbackRate: info.rate || 1})
         }
+        await native.updateNowPlaying(info)
     })
 
     public static onAudioCommand = async (listener: (command: AudioCommand) => void) => {
@@ -156,9 +183,14 @@ export default class Audio {
     }
 
     public static watchPlaybackContext = (context: PlaybackContext, isPlaying: () => boolean, 
-        onInterrupted: () => void, page: Pick<Document, "addEventListener" | "removeEventListener"> = document) => {
+        onInterrupted: () => void, page: Pick<Document, "addEventListener" | "removeEventListener"> = document,
+        onRunning?: () => void) => {
         const check = () => {
-            if (context.state !== "running" && isPlaying()) onInterrupted()
+            if (context.state !== "running" && isPlaying()) {
+                onInterrupted()
+            } else if (context.state === "running") {
+                onRunning?.()
+            }
         }
         context.on("statechange", check)
         page.addEventListener("visibilitychange", check)

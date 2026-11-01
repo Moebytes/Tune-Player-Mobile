@@ -87,6 +87,9 @@ const AudioPlayer: React.FunctionComponent = (props) => {
     const currentSong = useRef("")
     const skipping = useRef(false)
     const playbackRequest = useRef(0)
+    const startingPlayback = useRef<number | null>(null)
+    const contextPausedPlayback = useRef(false)
+    const recoveringPlayback = useRef(false)
 
     const progressBar = useRef(null) as any
     const abSlider = useRef<Slider>(null)
@@ -157,7 +160,12 @@ const AudioPlayer: React.FunctionComponent = (props) => {
 
     const pauseFromSystem = useEffectEvent(() => {
         playbackRequest.current++
-        Tone.getTransport().pause(Tone.immediate())
+        startingPlayback.current = null
+        contextPausedPlayback.current = false
+        const transport = Tone.getTransport()
+        const position = transport.seconds
+        transport.stop(Tone.immediate())
+        transport.seconds = position
         if (midi) disposeSynths()
         setPaused(true)
         audio.stopAudio()
@@ -165,12 +173,44 @@ const AudioPlayer: React.FunctionComponent = (props) => {
     })
 
     const isPlaybackActive = useEffectEvent(() => {
-        return !paused || Tone.getTransport().state === "started"
+        return !recoveringPlayback.current && startingPlayback.current === null &&
+            (!paused || Tone.getTransport().state === "started")
+    })
+
+    const pauseWithContext = useEffectEvent(() => {
+        if (contextPausedPlayback.current) return
+        contextPausedPlayback.current = true
+        setPaused(true)
+        audio.stopAudio()
+        publishNowPlaying()
+    })
+
+    const resumeWithContext = useEffectEvent(async () => {
+        if (!contextPausedPlayback.current || recoveringPlayback.current) return
+        contextPausedPlayback.current = false
+        recoveringPlayback.current = true
+        const request = playbackRequest.current
+        try {
+            await audio.recoverPlaybackClock(Tone.getContext())
+            if (request !== playbackRequest.current) return
+            if (Tone.getTransport().state === "started") {
+                setPaused(false)
+                publishNowPlaying()
+            } else {
+                await play(true)
+            }
+        } catch (error) {
+            if (request !== playbackRequest.current) return
+            console.warn("Unable to resume system playback", error)
+            pauseFromSystem()
+        } finally {
+            recoveringPlayback.current = false
+        }
     })
 
     useEffect(() => {
         return audio.watchPlaybackContext(Tone.getContext(),
-        () => isPlaybackActive(), () => pauseFromSystem())
+        () => isPlaybackActive(), () => pauseWithContext(), document, () => resumeWithContext())
     }, [])
 
     useEffect(() => {
@@ -548,15 +588,21 @@ const AudioPlayer: React.FunctionComponent = (props) => {
     })
 
     const play = useEffectEvent(async (alwaysPlay?: boolean) => {
-        if (!checkBuffer()) return
+        if (!checkBuffer() || startingPlayback.current !== null) return
         const transport = Tone.getTransport()
         const contextRunning = Tone.getContext().state === "running"
         if (contextRunning && transport.state === "started") {
-            if (alwaysPlay) publishNowPlaying()
-            else pauseFromSystem()
+            if (alwaysPlay || contextPausedPlayback.current) {
+                contextPausedPlayback.current = false
+                setPaused(false)
+                publishNowPlaying()
+            } else pauseFromSystem()
             return
         }
         const request = ++playbackRequest.current
+        startingPlayback.current = request
+        const resumeContextOnly = contextPausedPlayback.current && transport.state === "started"
+        contextPausedPlayback.current = false
         updateDuration()
 
         if (!loop && !abloop && transport.seconds >= duration) {
@@ -564,20 +610,26 @@ const AudioPlayer: React.FunctionComponent = (props) => {
         }
 
         try {
-            if (!contextRunning) transport.pause(Tone.immediate())
+            if (!contextRunning && !resumeContextOnly) transport.pause()
             await Promise.all([
                 audio.preparePlayback(songName, Tone.getContext()),
                 audioReady
             ])
             if (request !== playbackRequest.current) return
-            if (midi) await buildMIDI()
+            await audio.recoverPlaybackClock(Tone.getContext())
             if (request !== playbackRequest.current) return
-            transport.start()
+            if (!resumeContextOnly) {
+                if (midi) await buildMIDI()
+                if (request !== playbackRequest.current) return
+                transport.start()
+            }
             setPaused(false)
             publishNowPlaying()
         } catch (error) {
             if (request !== playbackRequest.current) return
             pauseFromSystem()
+        } finally {
+            if (startingPlayback.current === request) startingPlayback.current = null
         }
     })
 
@@ -988,6 +1040,8 @@ const AudioPlayer: React.FunctionComponent = (props) => {
         if (!source && !recentItem?.storedFile) return
         const request = ++loadRequest.current
         playbackRequest.current++
+        startingPlayback.current = null
+        contextPausedPlayback.current = false
         await audioReady
 
         const file = recentItem

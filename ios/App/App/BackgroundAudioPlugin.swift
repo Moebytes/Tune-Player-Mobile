@@ -17,7 +17,6 @@ class BackgroundAudioPlugin: CAPPlugin, CAPBridgedPlugin {
     private var observers: [NSObjectProtocol] = []
     private var playing = false
     private let sessionQueue = DispatchQueue(label: "com.moebytes.tuneplayer.mobile.audio-session")
-    private var needsReactivation = false
     private var trackID = ""
     private var metadata: [String: Any] = [:]
     private var metadataTime = ProcessInfo.processInfo.systemUptime
@@ -30,7 +29,6 @@ class BackgroundAudioPlugin: CAPPlugin, CAPBridgedPlugin {
             guard let type = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
                   type == AVAudioSession.InterruptionType.began.rawValue else { return }
             if let self = self {
-                self.sessionQueue.async { self.needsReactivation = true }
                 self.pausePlayback()
             }
         })
@@ -75,10 +73,6 @@ class BackgroundAudioPlugin: CAPPlugin, CAPBridgedPlugin {
                 let session = AVAudioSession.sharedInstance()
                 if session.category != .playback {
                     try session.setCategory(.playback, mode: .default)
-                }
-                if self.needsReactivation {
-                    try session.setActive(true)
-                    self.needsReactivation = false
                 }
                 DispatchQueue.main.async {
                     self.playing = true
