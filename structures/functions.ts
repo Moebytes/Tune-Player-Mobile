@@ -305,6 +305,13 @@ export default class Functions {
         return value ? JSON.parse(value) as SongItem[] : []
     }
 
+    public static removeRecent = async (item: SongItem) => {
+        const recent = await this.getRecent()
+        const key = item.storedFile || item.song
+        const remaining = recent.filter(track => (track.storedFile || track.song) !== key)
+        await Preferences.set({key: "recent", value: JSON.stringify(remaining)})
+    }
+
     public static updateRecent = async (item: SongItem) => {
         const {value} = await Preferences.get({key: "recent"})
 

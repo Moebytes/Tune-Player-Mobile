@@ -4,8 +4,10 @@
  * Licensed under CC BY-NC 4.0. See license.txt for details. *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-import React, {useEffect, useReducer, useState} from "react"
+import React, {useEffect, useReducer, useRef, useState} from "react"
 import * as Tone from "tone"
+import {Capacitor} from "@capacitor/core"
+import {ActionSheet, ActionSheetButtonStyle} from "@capacitor/action-sheet"
 import square from "../assets/images/square.png"
 import MP3UpIcon from "../assets/svg/mp3-up.svg"
 import MP3DownIcon from "../assets/svg/mp3-down.svg"
@@ -14,6 +16,7 @@ import RightArrowIcon from "../assets/svg/right-arrow.svg"
 import {FilePicker} from "@capawesome/capacitor-file-picker"
 import {SongItem} from "../structures/functions"
 import {useFlagSelector, useFlagActions, usePlaybackSelector} from "../store"
+import LongPressItem from "../ui/LongPressItem"
 import PressableHaptic from "../ui/PressableHaptic"
 import ScalableHaptic from "../ui/ScalableHaptic"
 import functions from "../structures/functions"
@@ -26,10 +29,10 @@ let pages = [] as SongItem[][]
 const RecentPlays: React.FunctionComponent = (props) => {
     const [ignored, forceUpdate] = useReducer(x => x + 1, 0)
     const [pageIndex, setPageIndex] = useState(0)
-    const [deleteQueue, setDeleteQueue] = useState({})
     const {currentSong} = usePlaybackSelector()
     const {recentFlag} = useFlagSelector()
     const {setUploadFlag, setPlayFlag, setDownloadFlag, setRecentFlag} = useFlagActions()
+    const menuOpen = useRef(false)
 
     const isTablet = () => {
         return Math.min(window.screen.width, window.screen.height) >= 600
@@ -66,6 +69,24 @@ const RecentPlays: React.FunctionComponent = (props) => {
         }
     }, [recentFlag])
 
+    const showTrackMenu = async (item: SongItem) => {
+        if (menuOpen.current || !Capacitor.isNativePlatform()) return
+        menuOpen.current = true
+        try {
+            const result = await ActionSheet.showActions({
+                title: item.songName,
+                options: [{title: "Remove track", style: ActionSheetButtonStyle.Destructive}],
+                cancelable: true
+            })
+            if (!result.canceled && result.index === 0) {
+                await functions.removeRecent(item)
+                setRecentFlag(true)
+            }
+        } finally {
+            menuOpen.current = false
+        }
+    }
+
     const upload = async () => {
         audio.resumeContext(Tone.getContext())
         let supportedTypes = ["audio/wav", 
@@ -89,42 +110,30 @@ const RecentPlays: React.FunctionComponent = (props) => {
     }
 
     const generateJSX = () => {
-        let row1 = [] as any
-        let row2 = [] as any
-        for (let i = 0; i < columns; i++) {
-            const item = pages[pageIndex]?.[i]
-            if (!item) {
-                row1.push(<img key={i} className="recent-square" src={square}/>)
-            } else {
-                row1.push(
-                    <div key={item.song} className="recent-song-item" aria-current={(item.storedFile || item.song) === currentSong} data-song={item.song}>
-                        <img className="recent-img" onClick={() => invokePlay(item)} src={item.songCover} 
-                        onContextMenu={() => setDeleteQueue(item)}/>
-                        <div className="recent-song-text-container">
-                            <span className="recent-song-text">{item.songName}</span>
-                        </div>
-                    </div>)
-            }
-        }
-        for (let i = columns; i < pageSize; i++) {
-            const item = pages[pageIndex]?.[i]
-            if (!item) {
-                row2.push(<img key={i} className="recent-square" src={square}/>)
-            } else {
-                row2.push(
-                <div key={item.song} className="recent-song-item" aria-current={(item.storedFile || item.song) === currentSong} data-song={item.song}>
-                    <img className="recent-img" onClick={() => invokePlay(item)} src={item.songCover} 
-                    onContextMenu={() => setDeleteQueue(item)}/>
+        const renderItem = (index: number) => {
+            const item = pages[pageIndex]?.[index]
+
+            if (!item) return (
+                <img key={index} className="recent-square" src={square} draggable={false}/>
+            )
+
+            const key = item.storedFile || item.song
+            return (
+                <LongPressItem key={key} className="recent-song-item" 
+                    aria-current={key === currentSong} data-song={item.song}
+                    onPress={() => invokePlay(item)} onLongPress={() => showTrackMenu(item)}>
+                    <img className="recent-img" src={item.songCover} draggable={false}/>
                     <div className="recent-song-text-container">
                         <span className="recent-song-text">{item.songName}</span>
                     </div>
-                </div>)
-            }
+                </LongPressItem>
+            )
         }
+
         return (
             <div className="recent-row-container">
-                <div className="recent-row">{row1}</div>
-                <div className="recent-row">{row2}</div>
+                <div className="recent-row">{Array.from({length: columns}, (_, index) => renderItem(index))}</div>
+                <div className="recent-row">{Array.from({length: columns}, (_, index) => renderItem(index + columns))}</div>
             </div>
         )
     }
