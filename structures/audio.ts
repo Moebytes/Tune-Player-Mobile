@@ -38,7 +38,58 @@ interface PlaybackContext {
 const native = registerPlugin<BackgroundAudioPlugin>("BackgroundAudio")
 let operations = Promise.resolve()
 let publishedInfo: NowPlayingInfo | undefined
+let progressClock: HTMLAudioElement | undefined
+let progressURL = ""
+let progressDuration = 0
 const mediaSessionAvailable = () => Boolean(navigator.mediaSession && typeof MediaMetadata !== "undefined")
+
+// The native progress clock is synced using dummy audio.
+const updateProgressClock = (info: NowPlayingInfo) => {
+    if (!Number.isFinite(info.duration) || info.duration <= 0 || !Number.isFinite(info.elapsed)) return
+    if (!progressClock) {
+        progressClock = document.createElement("audio")
+        progressClock.preload = "auto"
+        progressClock.addEventListener("loadedmetadata", () => {
+            if (publishedInfo) updateProgressClock(publishedInfo)
+        })
+    }
+    if (progressDuration !== info.duration) {
+        const samples = Math.ceil(info.duration * 8000 / 2) * 2
+        const wav = new Uint8Array(44 + samples)
+        const header = new DataView(wav.buffer)
+        const text = (offset: number, value: string) => {
+            for (let i = 0; i < value.length; i++) wav[offset + i] = value.charCodeAt(i)
+        }
+        text(0, "RIFF")
+        header.setUint32(4, 36 + samples, true)
+        text(8, "WAVEfmt ")
+        header.setUint32(16, 16, true)
+        header.setUint16(20, 1, true)
+        header.setUint16(22, 1, true)
+        header.setUint32(24, 8000, true)
+        header.setUint32(28, 8000, true)
+        header.setUint16(32, 1, true)
+        header.setUint16(34, 8, true)
+        text(36, "data")
+        header.setUint32(40, samples, true)
+        wav.fill(128, 44)
+        const previousURL = progressURL
+        progressURL = URL.createObjectURL(new Blob([wav], {type: "audio/wav"}))
+        progressDuration = info.duration
+        progressClock.src = progressURL
+        if (previousURL) URL.revokeObjectURL(previousURL)
+    }
+    const position = Math.max(0, Math.min(info.duration, info.elapsed))
+    if (progressClock.readyState > 0 && Math.abs(progressClock.currentTime - position) > (info.rate === 0 ? 0.001 : 0.2)) {
+        progressClock.currentTime = position
+    }
+    if (info.rate !== 0) progressClock.playbackRate = info.rate
+    if (info.rate === 0) {
+        progressClock.pause()
+    } else if (progressClock.paused) {
+        progressClock.play().catch(() => null)
+    }
+}
 
 export default class Audio {
     public static queue = (operation: () => Promise<void>) => {
@@ -58,6 +109,7 @@ export default class Audio {
     }
 
     public static preparePlayback = async (title: string, context: {rawContext: unknown, state: string}) => {
+        progressClock?.play().catch(() => null)
         const resumed = this.resumeContext(context)
         const started = this.startAudio(title).then(async () => {
             if (context.state !== "running") await this.resumeContext(context)
@@ -65,9 +117,12 @@ export default class Audio {
         await Promise.all([resumed, started])
     }
 
-    public static stopAudio = () => this.queue(async () => {
-        if (Capacitor.isPluginAvailable("BackgroundAudio")) await native.stop()
-    })
+    public static stopAudio = () => {
+        progressClock?.pause()
+        return this.queue(async () => {
+            if (Capacitor.isPluginAvailable("BackgroundAudio")) await native.stop()
+        })
+    }
 
     public static resumeContext = (context: {rawContext: unknown, state: string}) => {
         const raw = context.rawContext as {resume: () => Promise<void>}
@@ -110,6 +165,7 @@ export default class Audio {
 
     public static updateNowPlaying = (info: NowPlayingInfo) => this.queue(async () => {
         if (Capacitor.getPlatform() !== "ios") return
+        if (info.rate === 0) info = {...info, elapsed: Math.floor(info.elapsed)}
         if (!mediaSessionAvailable()) {
             await native.updateNowPlaying(info)
             return
@@ -125,6 +181,7 @@ export default class Audio {
         }
 
         publishedInfo = {...info, artwork}
+        updateProgressClock(publishedInfo)
 
         if (Number.isFinite(info.duration) && info.duration > 0 && Number.isFinite(info.elapsed)) {
             session.setPositionState?.({duration: info.duration,
