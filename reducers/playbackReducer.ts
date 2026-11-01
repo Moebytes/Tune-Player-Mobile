@@ -24,7 +24,7 @@ const playbackSlice = createSlice({
         abloop: false,
         loopStart: 0,
         loopEnd: 100,
-        preservesPitch: false,
+        preservesPitch: true,
         duration: 0,
         song: "",
         currentSong: "",

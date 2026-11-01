@@ -609,43 +609,35 @@ const AudioPlayer: React.FunctionComponent = (props) => {
 
     const updateSpeed = async (value?: number | string, applyState?: any) => {
         if (!engine.soundtouchNode || (!midi && !engine.player?.buffer.loaded)) return
-        const wasPlaying = Tone.getTransport().state === "started"
-        Tone.getTransport().pause()
-        let currentSpeed = value !== undefined ? Number(value) : speed
-        let currentDuration = engine.player.buffer.duration / currentSpeed
+        const transport = Tone.getTransport()
+        const wasPlaying = transport.state === "started"
+        const currentSpeed = value !== undefined ? Number(value) : speed
+        const time = Tone.immediate()
+        const position = transport.seconds
+        transport.pause(time)
         if (midi) {
             await buildMIDI()
-
             const newDuration = midiDuration / currentSpeed
             setDuration(newDuration)
-
-            if (abloop) {
-                applyAB(newDuration)
-            } else {
-                applyLoopRegion(newDuration)
-            }
+            if (abloop) applyAB(newDuration)
+            else applyLoopRegion(newDuration)
         } else {
-            let currentPlayer = engine.player
-            if (applyState) {
-                currentPlayer = applyState.player
-            }
+            const currentPlayer = applyState ? applyState.player : engine.player
+            const oldDuration = currentPlayer.buffer.duration / currentPlayer.playbackRate
+            const currentDuration = currentPlayer.buffer.duration / currentSpeed
+            if (!applyState) currentPlayer.unsync()
             currentPlayer.playbackRate = currentSpeed
+            if (!applyState) currentPlayer.sync().start(0)
             const pitchCorrect = preservesPitch ? 1 / currentSpeed : 1
             engine.soundtouchNode.parameters.get("pitch").value = functions.semitonesToScale(pitch) * pitchCorrect
-            let percent = Tone.getTransport().seconds / currentDuration
             setDuration(currentDuration)
-            let newSeconds = percent * currentDuration
-            Tone.getTransport().seconds = Math.min(
-                Math.max(newSeconds, 0),
-                currentDuration - 0.001
+            transport.seconds = Math.min(
+                Math.max(position / oldDuration * currentDuration, 0),
+                Math.max(0, currentDuration - 0.001)
             )
-            if (abloop) {
-                applyAB(currentDuration)
-            } else {
-                applyLoopRegion(currentDuration)
-            }   
+            applyLoopRegion(currentDuration)
         }
-        if (wasPlaying) Tone.getTransport().start()
+        if (wasPlaying) transport.start(Tone.immediate())
     }
 
     useEffect(() => {
@@ -658,16 +650,17 @@ const AudioPlayer: React.FunctionComponent = (props) => {
 
     const updatePitch = async (value?: number | string, applyState?: any) => {
         if (!engine.soundtouchNode) return
-        const wasPlaying = Tone.getTransport().state === "started"
-        Tone.getTransport().pause()
-        let currentPitch = value !== undefined ? Number(value) : pitch
+        const currentPitch = value !== undefined ? Number(value) : pitch
         if (midi) {
+            const transport = Tone.getTransport()
+            const wasPlaying = transport.state === "started"
+            transport.pause(Tone.immediate())
             await buildMIDI()
+            if (wasPlaying) transport.start(Tone.immediate())
         } else {
             const pitchCorrect = preservesPitch ? 1 / speed : 1
             engine.soundtouchNode.parameters.get("pitch").value = functions.semitonesToScale(currentPitch) * pitchCorrect
         }
-        if (wasPlaying) Tone.getTransport().start()
     }
 
     useEffect(() => {
@@ -680,7 +673,7 @@ const AudioPlayer: React.FunctionComponent = (props) => {
 
     useEffect(() => {
         applyEffects()
-    }, [pitch, pitchLFO, pitchLFORate, splitBands, splitBandFreq])
+    }, [pitchLFO, splitBands, splitBandFreq])
 
     const updatePitchLFORate = async (value?: number | string) => {
         if (!engine.lfoNode) return
@@ -745,7 +738,7 @@ const AudioPlayer: React.FunctionComponent = (props) => {
         setABLoop(false)
         setLoopStart(0)
         setLoopEnd(100)
-        setPreservesPitch(false)
+        setPreservesPitch(true)
         setDuration(0)
         setEffects([])
         setPlayHover(false)
@@ -822,11 +815,16 @@ const AudioPlayer: React.FunctionComponent = (props) => {
         transport.loop = loop || useAB
         if ((loop || useAB) && (transport.seconds < start || transport.seconds >= end)) {
             transport.seconds = start
+            return start
         }
     }
 
     useEffect(() => {
-        applyLoopRegion(duration)
+        const position = applyLoopRegion(duration)
+        if (position !== undefined && duration > 0) {
+            const target = position / duration * 100
+            seek(reverse ? 100 - target : target)
+        }
     }, [loop, abloop, loopStart, loopEnd, duration, reverse, midi, midiDuration, speed])
 
     const seek = (value: number) => {

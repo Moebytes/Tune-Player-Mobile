@@ -4,7 +4,7 @@
  * Licensed under CC BY-NC 4.0. See license.txt for details. *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-import React, {useEffect, useRef, useState} from "react"
+import React, {useEffect, useRef} from "react"
 import {useSheetSelector, useSheetActions, usePlaybackSelector, usePlaybackActions} from "../store"
 import {presentSheet, dismissSheet} from "@capgo/capacitor-sheets/react"
 import {Clipboard} from "@capacitor/clipboard"
@@ -16,11 +16,8 @@ import "./styles/sheet.less"
 const ABLoopSheet: React.FunctionComponent = () => {
     const {showABLoopSheet} = useSheetSelector()
     const {setShowABLoopSheet} = useSheetActions()
-    const {duration, reverse, abloop, loopStart, loopEnd} = usePlaybackSelector()
+    const {duration, reverse, loopStart, loopEnd} = usePlaybackSelector()
     const {setABLoop, setLoop, setLoopStart, setLoopEnd} = usePlaybackActions()
-    const [localABLoop, setLocalABLoop] = useState(abloop)
-    const [localLoopStart, setLocalLoopStart] = useState(loopStart)
-    const [localLoopEnd, setLocalLoopEnd] = useState(loopEnd)
     const sheet = useRef<HTMLElement>(null)
     const slider = useRef<Slider>(null)
 
@@ -29,39 +26,30 @@ const ABLoopSheet: React.FunctionComponent = () => {
             Promise.resolve(presentSheet("abloop-sheet"))
                 .then(() => slider.current?.resize())
 
-            setLocalABLoop(abloop)
-            setLocalLoopStart(loopStart)
-            setLocalLoopEnd(loopEnd)
-
             setShowABLoopSheet(false)
         }
     }, [showABLoopSheet])
 
-    const clear = () => {
-        setABLoop(false)
+    const reset = () => {
         setLoopStart(0)
         setLoopEnd(100)
-
-        dismissSheet("abloop-sheet")
     }
 
-    const apply = () => {
-        if (localABLoop) setLoop(true)
-        setABLoop(localABLoop)
-        setLoopStart(localLoopStart)
-        setLoopEnd(localLoopEnd)
-
+    const clear = () => {
+        setABLoop(false)
+        reset()
         dismissSheet("abloop-sheet")
     }
 
     const updateABLoop = (value: number[]) => {
-        setLocalABLoop(true)
-        setLocalLoopStart(value[0])
-        setLocalLoopEnd(value[1])
+        setLoop(true)
+        setABLoop(true)
+        setLoopStart(value[0])
+        setLoopEnd(value[1])
     }
 
     const loopStartProgress = () => {
-        let percent = localLoopStart / 100
+        let percent = loopStart / 100
         if (reverse) {
             const secondsProgress = (1-percent) * duration
             return functions.formatSeconds(duration - secondsProgress)
@@ -72,7 +60,7 @@ const ABLoopSheet: React.FunctionComponent = () => {
     }
 
     const loopEndProgress = () => {
-        let percent = localLoopEnd / 100
+        let percent = loopEnd / 100
         if (reverse) {
             const secondsProgress = (1-percent) * duration
             return functions.formatSeconds(duration - secondsProgress)
@@ -83,7 +71,7 @@ const ABLoopSheet: React.FunctionComponent = () => {
     }
 
     const copyLoop = async () => {
-        const region = [localLoopStart, localLoopEnd]
+        const region = [loopStart, loopEnd]
         await Clipboard.write({string: JSON.stringify(region)})
     }
 
@@ -92,13 +80,11 @@ const ABLoopSheet: React.FunctionComponent = () => {
             const {value} = await Clipboard.read()
             const region = JSON.parse(value)
 
-            if (typeof region[0] !== "number" || 
+            if (typeof region[0] !== "number" ||
                 typeof region[1] !== "number" ||
                 region[0] < 0 || region[1] > 100) return
 
-            setLocalABLoop(true)
-            setLocalLoopStart(region[0])
-            setLocalLoopEnd(region[1])
+            updateABLoop(region)
         } catch {}
     }
 
@@ -114,11 +100,11 @@ const ABLoopSheet: React.FunctionComponent = () => {
                     <div className="sheet-row">
                         <div className="sheet-slider-container">
                             <Slider className="ab-slider" trackClassName="ab-slider-track" thumbClassName="ab-slider-thumb"
-                            ref={slider} min={0} max={100} step={0.01} value={[localLoopStart, localLoopEnd]}
+                            ref={slider} min={0} max={100} step={0.01} value={[loopStart, loopEnd]}
                             onChange={(value: number[]) => updateABLoop(value)} pearling minDistance={1}/>
 
                             <div className="sheet-slider-text-container">
-                                <span className="sheet-slider-text">{loopStartProgress()}</span> 
+                                <span className="sheet-slider-text">{loopStartProgress()}</span>
                                 <span className="sheet-slider-text">{loopEndProgress()}</span>
                             </div>
                         </div>
@@ -139,8 +125,8 @@ const ABLoopSheet: React.FunctionComponent = () => {
                         </ScalableHaptic>
                     </div>
                     <div className="sheet-row">
-                        <ScalableHaptic scaleFactor={0.97} onPress={apply}>
-                            <button className="sheet-apply-button">Apply</button>
+                        <ScalableHaptic scaleFactor={0.97} onPress={reset}>
+                            <button className="sheet-apply-button">Reset</button>
                         </ScalableHaptic>
                     </div>
                 </cap-sheet-content>
