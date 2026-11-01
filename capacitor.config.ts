@@ -1,6 +1,6 @@
 import type {CapacitorConfig} from "@capacitor/cli"
 
-let liveReload = false
+let liveReload = true
 
 const config: CapacitorConfig = {
     appId: "com.moebytes.tuneplayer.mobile",

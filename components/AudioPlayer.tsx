@@ -85,6 +85,7 @@ const AudioPlayer: React.FunctionComponent = (props) => {
     const playbackRequest = useRef(0)
 
     const progressBar = useRef(null) as any
+    const abSlider = useRef<Slider>(null)
     const volumeBar = useRef(null) as any
     const speedBar = useRef(null) as any
     const pitchBar = useRef(null) as any
@@ -117,6 +118,7 @@ const AudioPlayer: React.FunctionComponent = (props) => {
 
     useEffect(() => {
         progressBar.current?.resize()
+        abSlider.current?.resize()
         volumeBar.current?.resize()
         speedBar.current?.resize()
         pitchBar.current?.resize()
@@ -806,6 +808,19 @@ const AudioPlayer: React.FunctionComponent = (props) => {
         if (!enabled) setABLoop(false)
     }
 
+    const toggleAB = () => {
+        setABLoop(!abloop)
+        setABDragging(false)
+        setDragProgress(null)
+    }
+
+    const updateABLoop = (value: number[]) => {
+        const handlePosition = value[0] !== loopStart ? value[0] : value[1]
+        setDragProgress(duration * handlePosition / 100)
+        setLoopStart(value[0])
+        setLoopEnd(value[1])
+    }
+
     const applyLoopRegion = (currentDuration: number, useAB = abloop) => {
         if (currentDuration <= 0) return
         const transport = Tone.getTransport()
@@ -830,7 +845,7 @@ const AudioPlayer: React.FunctionComponent = (props) => {
     const seek = (value: number) => {
         if (duration <= 0 || !Number.isFinite(value)) return
         setDragging(false)
-        setDragProgress(null)
+        if (!abDragging) setDragProgress(null)
         const transport = Tone.getTransport()
         const displayPosition = duration * Math.max(0, Math.min(100, value)) / 100
         const target = reverse ? duration - displayPosition : displayPosition
@@ -1633,8 +1648,14 @@ const AudioPlayer: React.FunctionComponent = (props) => {
                             ref={progressBar} min={0} max={100} step={0.01} onBeforeChange={() => setDragging(true)} onChange={(value: number) => updateProgressText(value)} 
                             onAfterChange={(value: number) => seek(value)} value={dragging && !abDragging ? ((dragProgress || 0) / duration) * 100 : progress}/>
 
+                            {abloop && 
+                            <Slider className="ab-slider" trackClassName="ab-slider-track" thumbClassName="ab-slider-thumb"
+                            ref={abSlider} min={0} max={100} step={0.01} value={[loopStart, loopEnd]}
+                            onBeforeChange={() => setABDragging(true)} onChange={(value: number[]) => updateABLoop(value)}
+                            onAfterChange={() => {setABDragging(false); setDragProgress(null)}} pearling minDistance={1}/>}
+
                             <div className="progress-text-container">
-                                <span className="player-text">{dragging ? functions.formatSeconds(dragProgress || 0) : functions.formatSeconds(secondsProgress)}</span> 
+                                <span className="player-text">{dragging || abDragging ? functions.formatSeconds(dragProgress || 0) : functions.formatSeconds(secondsProgress)}</span>
                                 <span className="player-text">{functions.formatSeconds(duration)}</span>
                             </div>
                         </div>
@@ -1653,7 +1674,7 @@ const AudioPlayer: React.FunctionComponent = (props) => {
                             <ScalableHaptic onPress={() => updateLoop()}>
                                 <LoopIcon className={`player-button ${(loop || abloop) && "active-button"}`}/>
                             </ScalableHaptic>
-                            <ScalableHaptic onPress={() => setShowABLoopSheet(true)}>
+                            <ScalableHaptic onPress={() => toggleAB()} onLongPress={() => setShowABLoopSheet(true)}>
                                 <ABLoopIcon className={`player-button ${abloop && "active-button"}`}/>  
                             </ScalableHaptic>
                             <ScalableHaptic onPress={() => reset()}>

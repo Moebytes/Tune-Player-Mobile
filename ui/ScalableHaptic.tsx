@@ -4,7 +4,7 @@
  * Licensed under CC BY-NC 4.0. See license.txt for details. *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-import React, {useRef, useState} from "react"
+import React, {useEffect, useRef, useState} from "react"
 import {Haptics, ImpactStyle, NotificationType} from "@capacitor/haptics"
 
 type HapticFeedbackType =
@@ -35,6 +35,7 @@ interface Props extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "chi
     containerStyle?: React.CSSProperties
     style?: React.CSSProperties
     hapticType?: HapticFeedbackType
+    onLongPress?: () => void
     longPressDelay?: number
     onPress?: React.PointerEventHandler<HTMLButtonElement>
     onPressIn?: (event: React.PointerEvent<HTMLButtonElement>) => void
@@ -42,12 +43,44 @@ interface Props extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "chi
 }
 
 const ScalableHaptic: React.FunctionComponent<Props> = ({children, onPressIn,
-    onPressOut, onPress, longPressDelay = 500, onBlur, icon: Icon, size = 0, color = "", activeColor, 
+    onPressOut, onPress, onLongPress, longPressDelay = 500, onBlur, icon: Icon, size = 0, color = "", activeColor,
     scaleFactor = 0.85, containerStyle, style, hapticType = "impactMedium", ...props}) => {
     const [pressed, setPressed] = useState(false)
     const pressedRef = useRef(false)
-    const pressStartRef = useRef(0)
     const pointerIdRef = useRef<number | null>(null)
+    const pointerTarget = useRef<HTMLButtonElement | null>(null)
+
+    const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const longPressed = useRef(false)
+    const clearLongPress = () => {
+        if (longPressTimer.current !== null) clearTimeout(longPressTimer.current)
+        longPressTimer.current = null
+    }
+
+    const resetPress = () => {
+        clearLongPress()
+        const target = pointerTarget.current
+        const pointerId = pointerIdRef.current
+        pressedRef.current = false
+        pointerIdRef.current = null
+        pointerTarget.current = null
+        setPressed(false)
+        if (target && pointerId !== null && target.hasPointerCapture(pointerId)) {
+            target.releasePointerCapture(pointerId)
+        }
+    }
+
+    useEffect(() => {
+        window.addEventListener("blur", resetPress)
+        return () => {
+            clearLongPress()
+            window.removeEventListener("blur", resetPress)
+        }
+    }, [])
+
+    useEffect(() => {
+        if (props.disabled) resetPress()
+    }, [props.disabled])
 
     const triggerHaptic = async () => {
         switch (hapticType) {
@@ -76,26 +109,35 @@ const ScalableHaptic: React.FunctionComponent<Props> = ({children, onPressIn,
     }
 
     const pressIn = (event: React.PointerEvent<HTMLButtonElement>) => {
-        if (pressedRef.current || props.disabled) return
+        if (props.disabled) return
+        resetPress()
         pressedRef.current = true
         pointerIdRef.current = event.pointerId
-        pressStartRef.current = performance.now()
+        pointerTarget.current = event.currentTarget
+        event.currentTarget.setPointerCapture(event.pointerId)
 
         setPressed(true)
+        longPressed.current = false
+        if (onLongPress) {
+            longPressTimer.current = setTimeout(() => {
+                longPressTimer.current = null
+                longPressed.current = true
+                resetPress()
+                triggerHaptic()
+                onLongPress()
+            }, longPressDelay)
+        }
         triggerHaptic()
         onPressIn?.(event)
     }
 
     const pressOut = (event: React.PointerEvent<HTMLButtonElement>, cancelled = false) => {
         if (!pressedRef.current || pointerIdRef.current !== event.pointerId) return
-        const duration = performance.now() - pressStartRef.current
-
-        pressedRef.current = false
-        pointerIdRef.current = null
-        setPressed(false)
+        const wasLongPress = longPressed.current
+        resetPress()
         onPressOut?.(event)
 
-        if (!cancelled && duration < longPressDelay && !props.disabled) {
+        if (!cancelled && !wasLongPress && !props.disabled) {
             onPress?.(event)
         }
     }
@@ -103,8 +145,7 @@ const ScalableHaptic: React.FunctionComponent<Props> = ({children, onPressIn,
     return (
         <button type="button" {...props}
             onPointerDown={(event) => {
-                if (event.button === 0 && !props.disabled) {
-                    event.currentTarget.setPointerCapture(event.pointerId)
+                if (event.button === 0 && event.isPrimary && !props.disabled) {
                     pressIn(event)
                 }
             }}
@@ -112,9 +153,7 @@ const ScalableHaptic: React.FunctionComponent<Props> = ({children, onPressIn,
             onPointerCancel={(event) => pressOut(event, true)}
             onLostPointerCapture={(event) => pressOut(event, true)}
             onBlur={(event) => {
-                pressedRef.current = false
-                pointerIdRef.current = null
-                setPressed(false)
+                resetPress()
                 onBlur?.(event)
             }}
             style={{
